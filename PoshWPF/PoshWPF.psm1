@@ -32,8 +32,18 @@ Function New-WPFWindow {
     })
     $Global:PoshWPFHashTable.Handle = $PS.BeginInvoke()
     $Global:PoshWPFHashTable.Runspace = $Runspace
+    $Global:PoshWPFHashTable.PowerShell = $PS
     while(!$Global:PoshWPFHashTable.WindowShown) {
         Start-Sleep -Milliseconds 10
+    }
+
+    $null = New-WPFEvent -ControlName 'Window' -EventName 'Closing' -Action {
+        $null = $Global:PoshWPFHashTable.PowerShell.EndInvoke($Global:PoshWPFHashTable.Handle)
+        $null = $Global:PoshWPFHashTable.PowerShell.Dispose()
+        $null = $Global:PoshWPFHashTable.Runspace.Close()
+        $null = $Global:PoshWPFHashTable.Runspace.Dispose()
+        $Global:PoshWPFHashTable.WindowsControls = $null
+        $Global:PoshWPFHashTable.Handle = $null
     }
 }
 
@@ -131,5 +141,5 @@ Function New-WPFEvent {
     )
     if($ControlName -ne 'Window') { $ControlName = "Window_$ControlName" }
     $WinControls = $Global:PoshWPFHashTable.WindowControls
-    $null = Register-ObjectEvent -InputObject $WinControls[$ControlName] -EventName 'Click' -Action $Action
+    $null = Register-ObjectEvent -InputObject $WinControls[$ControlName] -EventName $EventName -Action $Action
 }
