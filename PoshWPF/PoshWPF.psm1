@@ -1,6 +1,22 @@
 Add-Type -AssemblyName PresentationFramework,PresentationCore,WindowsBase
 
 Function New-WPFWindow {
+    <#
+        .SYNOPSIS
+        Creates new WPF window in background thread
+        
+        .DESCRIPTION
+        Creates new WPF window in background thread to allow you to keep using the PowerShell console
+        
+        .PARAMETER xaml
+        XAML of window
+        
+        .EXAMPLE
+        New-WPFWindow -XAML $XAML
+        
+        .NOTES
+            .Author Ryan Ephgrave
+    #>
     Param(
         [Parameter(Mandatory=$true,
                    Position=0,
@@ -48,6 +64,22 @@ Function New-WPFWindow {
 }
 
 Function Format-WPFXAML {
+    <#
+        .SYNOPSIS
+        Removes Visual Studio specific XAML properties
+        
+        .DESCRIPTION
+        Removes the properties Visual Studio adds to XAML which causes crashing outside of VS
+        
+        .PARAMETER xaml
+        XAMl of the window
+        
+        .EXAMPLE
+        Format-WPFXAML -XAML $xaml
+        
+        .NOTES
+        .Author: Ryan Ephgrave
+    #>
     param(
         [xml]$xaml
     )
@@ -77,16 +109,23 @@ Function Format-WPFXAML {
     }
 }
 
-Function Add-WPFAction {
-    param(
-        [scriptblock]$ScriptBlock
-    )
-    $null = $Global:PoshWPFHashTable.ActionsMutex.WaitOne()
-    $null = $Global:PoshWPFHashTable.Actions.Add($ScriptBlock)
-    $null = $Global:PoshWPFHashTable.ActionsMutex.ReleaseMutex()
-}
-
 Function Invoke-WPFAction {
+    <#
+        .SYNOPSIS
+        Runs an action in the UI thread
+        
+        .DESCRIPTION
+        Runs a scriptblock in the UI thread
+        
+        .PARAMETER Action
+        Scriptblock to run in the UI thread
+        
+        .EXAMPLE
+        Invoke-WPFAction -Action $Scriptblock
+        
+        .NOTES
+        .Author: Ryan Ephgrave
+    #>
     param(
         [ScriptBlock]$Action
     )
@@ -94,6 +133,30 @@ Function Invoke-WPFAction {
 }
 
 Function Get-WPFControl {
+    <#
+        .SYNOPSIS
+        Returns a hash of properties of the WPF control
+        
+        .DESCRIPTION
+        Returns a hash because if you try to interact with the objects in the HashTable you'll get errors
+        
+        .PARAMETER ControlName
+        Name of WPF control
+        
+        .PARAMETER PropertyName
+        Name of the property you want
+        
+        .EXAMPLE
+        Get-WPFControl -ControlName 'Window' -PropertyName 'Title'
+        Only returns Title from Window
+
+        .EXAMPLE
+        Get-WPFControl -ControlName 'Window'
+        Returns all properties from Window
+        
+        .NOTES
+        .Author: Ryan Ephgrave
+    #>
     Param(
         [string]$ControlName,
         [string]$PropertyName
@@ -119,6 +182,28 @@ Function Get-WPFControl {
 }
 
 Function Set-WPFControl {
+    <#
+        .SYNOPSIS
+        Updates a property on a WPF control
+        
+        .DESCRIPTION
+        Will update the property by running Invoke-WPFAction
+        
+        .PARAMETER ControlName
+        Name of the control
+        
+        .PARAMETER PropertyName
+        Name of the property
+        
+        .PARAMETER Value
+        Object with the new value
+        
+        .EXAMPLE
+        Set-WPFControl -ControlName 'Window' -PropertyName 'Title' -Value 'My new title!'
+        
+        .NOTES
+        .Author: Ryan Ephgrave
+    #>
     Param(
         [string]$ControlName,
         [string]$PropertyName,
@@ -134,6 +219,28 @@ Function Set-WPFControl {
 }
 
 Function New-WPFEvent {
+    <#
+        .SYNOPSIS
+        Creates an event to run in the main thread when a UI action is run in the UI thread
+        
+        .DESCRIPTION
+        Creates an event to run in the main thread when a UI action is run in the UI thread
+        
+        .PARAMETER ControlName
+        Name of the control
+        
+        .PARAMETER EventName
+        Name of the event on the control
+        
+        .PARAMETER Action
+        Action to run
+        
+        .EXAMPLE
+        New-WPFEvent -ControlName 'Button' -EventName 'Click' -Action { Write-Host 'Button clicked!' }
+        
+        .NOTES
+        .Author: Ryan Ephgrave
+    #>
     Param(
         [string]$ControlName,
         [string]$EventName,
@@ -145,6 +252,21 @@ Function New-WPFEvent {
 }
 
 Function Start-WPFSleep {
+    <#
+        .SYNOPSIS
+        Waits for action to be done
+        
+        .DESCRIPTION
+        When running the UI in a separate thread, you may want to pause the main thread
+        until an action is done in the UI. This is very necessary if you run the script
+        without the -NoExit switch. The PowerShell session will simply close!
+        
+        .EXAMPLE
+        Start-WPFSleep
+        
+        .NOTES
+        .Author: Ryan Ephgrave
+    #>
     while($Global:PoshWPFHashTable.WaitEvent){
         Wait-Event -Timeout 2
     }
