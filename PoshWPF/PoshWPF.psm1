@@ -15,6 +15,7 @@ Function New-WPFWindow {
     $Global:PoshWPFHashTable.Actions = New-Object System.Collections.ArrayList
     $Global:PoshWPFHashTable.ActionsMutex = New-Object System.Threading.Mutex($false, 'ActionsMutex')
     $Global:PoshWPFHashTable.WindowShown = $false
+    $Global:PoshWPFHashTable.WaitEvent = $true
     $Global:PoshWPFHashTable.WindowControls = @{}
     $Global:PoshWPFHashTable.ScriptDirectory = $PSScriptRoot
     $Runspace = [RunspaceFactory]::CreateRunspace()
@@ -42,8 +43,7 @@ Function New-WPFWindow {
         $null = $Global:PoshWPFHashTable.PowerShell.Dispose()
         $null = $Global:PoshWPFHashTable.Runspace.Close()
         $null = $Global:PoshWPFHashTable.Runspace.Dispose()
-        $Global:PoshWPFHashTable.WindowsControls = $null
-        $Global:PoshWPFHashTable.Handle = $null
+        $Global:PoshWPFHashTable.WaitEvent = $false
     }
 }
 
@@ -142,4 +142,10 @@ Function New-WPFEvent {
     if($ControlName -ne 'Window') { $ControlName = "Window_$ControlName" }
     $WinControls = $Global:PoshWPFHashTable.WindowControls
     $null = Register-ObjectEvent -InputObject $WinControls[$ControlName] -EventName $EventName -Action $Action
+}
+
+Function Start-WPFSleep {
+    while($Global:PoshWPFHashTable.WaitEvent){
+        Wait-Event -Timeout 2
+    }
 }
