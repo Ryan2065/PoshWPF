@@ -9,17 +9,14 @@ Function Show-WPFWindow {
         $xaml.SelectNodes("//*[@Name]") | Foreach-Object { 
             $Global:PoshWPFHashTable.WindowControls["Window_$($_.Name)"] = $Window.FindName($_.Name)
         }
-        #$Timer = New-Object System.Windows.Threading.DispatcherTimer
-        #$Timer.Interval = [timespan]"0:0:0.50"
-        #$Timer.Add_Tick( { New-WPFTick } )
-        #$Timer.Start()
         $Global:PoshWPFHashTable.WindowShown = $true
         $null = $Window.ShowDialog()
     }
     catch {
-        $Global:PoshWPFHashTable.WindowShown = $true
+        $Global:PoshWPFHashTable.WindowShown = $false
         Write-WPFError -Exc $_
     }
+    $Global:PoshWPFHashTable.WindowShown = $false
 }
 
 Function Write-WPFError {

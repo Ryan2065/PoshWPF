@@ -149,3 +149,4 @@ Function Start-WPFSleep {
         Wait-Event -Timeout 2
     }
 }
+
