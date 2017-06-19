@@ -162,18 +162,26 @@ Function Get-WPFControl {
         [string]$PropertyName
     )
     if($ControlName -ne 'Window') { $ControlName = "Window_$($ControlName)" }
-    $Control = $Global:PoshWPFHashTable.WindowControls[$ControlName]
-    if($null -ne $Control) {
-        if([string]::IsNullOrEmpty($PropertyName)) {
-            $PropertyHash = @{}
-            $ControlProperties = ($Control | Get-Member -MemberType Property).Name
-            foreach($ControlProperty in $ControlProperties) {
-                $PropertyHash[$ControlProperty] = $Control."$($ControlProperty)"
+    $Global:PoshWPFHashTable.GetControl = $ControlName
+    Invoke-WPFAction -Action {
+        $Global:PoshWPFHashTable.GetControlObject = @{}
+        $ControlName = $Global:PoshWPFHashTable.GetControl
+        try{
+            if($Global:PoshWPFHashTable.WindowControls[$ControlName]) {
+                $MemberNames = ($Global:PoshWPFHashTable.WindowControls[$ControlName] | Get-Member -MemberType Property).Name
+                Foreach($Name in $MemberNames) {
+                    $Global:PoshWPFHashTable.GetControlObject[$Name] = $Global:PoshWPFHashTable.WindowControls[$ControlName]."$Name"
+                }
             }
-            $PropertyHash
+        }
+        catch {}
+    }
+    if($Global:PoshWPFHashTable.GetControlObject.Count -ne 0) {
+        if([string]::IsNullOrEmpty($PropertyName)) {
+            $Global:PoshWPFHashTable.GetControlObject
         }
         else {
-            $Control."$PropertyName"
+            $Global:PoshWPFHashTable.GetControlObject."$PropertyName"
         }
     }
     else {
