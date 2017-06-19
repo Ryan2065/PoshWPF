@@ -129,7 +129,10 @@ Function Invoke-WPFAction {
     param(
         [ScriptBlock]$Action
     )
-    $Global:PoshWPFHashTable.WindowControls.Window.Dispatcher.Invoke([action]$Action, 'Normal')
+    $null = $Global:PoshWPFHashTable.ActionsMutex.WaitOne()
+    $null = $Global:PoshWPFHashTable.Actions.Add($Action)
+    $null = $Global:PoshWPFHashTable.ActionsMutex.ReleaseMutex()
+ 
 }
 
 Function Get-WPFControl {
