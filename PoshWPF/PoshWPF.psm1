@@ -32,7 +32,6 @@ Function New-WPFWindow {
     $Global:PoshWPFHashTable.ActionsMutex = New-Object System.Threading.Mutex($false, 'ActionsMutex')
     $Global:PoshWPFHashTable.WindowShown = $false
     $Global:PoshWPFHashTable.WaitEvent = $true
-    $Global:PoshWPFHashTable.WindowControls = @{}
     $Global:PoshWPFHashTable.ScriptDirectory = $PSScriptRoot
     $Runspace = [RunspaceFactory]::CreateRunspace()
     $Runspace.ApartmentState = 'STA'
@@ -129,10 +128,8 @@ Function Invoke-WPFAction {
     param(
         [ScriptBlock]$Action
     )
-    $null = $Global:PoshWPFHashTable.ActionsMutex.WaitOne()
-    $null = $Global:PoshWPFHashTable.Actions.Add($Action)
-    $null = $Global:PoshWPFHashTable.ActionsMutex.ReleaseMutex()
- 
+    
+    $Global:PoshWPFHashTable.Window.Dispatcher.Invoke([action]$Action)
 }
 
 Function Get-WPFControl {
@@ -165,30 +162,26 @@ Function Get-WPFControl {
         [string]$PropertyName
     )
     if($ControlName -ne 'Window') { $ControlName = "Window_$($ControlName)" }
-    $Global:PoshWPFHashTable.GetControl = $ControlName
-    Invoke-WPFAction -Action {
-        $Global:PoshWPFHashTable.GetControlObject = @{}
-        $ControlName = $Global:PoshWPFHashTable.GetControl
-        try{
-            if($Global:PoshWPFHashTable.WindowControls[$ControlName]) {
-                $MemberNames = ($Global:PoshWPFHashTable.WindowControls[$ControlName] | Get-Member -MemberType Property).Name
-                Foreach($Name in $MemberNames) {
-                    $Global:PoshWPFHashTable.GetControlObject[$Name] = $Global:PoshWPFHashTable.WindowControls[$ControlName]."$Name"
-                }
-            }
+    $strAction = @"
+        `$Control = `$Global:WindowControls['$ControlName']
+        `$Global:PoshWPFHashTable.GetControlObject = @{}
+        `$ControlNames = (`$Control | Get-Member -MemberType Property).Name
+        `$ControlNames > c:\users\u586200\desktop\test.txt
+        foreach(`$Name in `$ControlNames) {
+            `$Global:PoshWPFHashTable.GetControlObject[`$Name] = `$Control."`$Name"
         }
-        catch {}
-    }
-    if($Global:PoshWPFHashTable.GetControlObject.Count -ne 0) {
+"@
+    $action = [ScriptBlock]::Create($strAction)
+    Invoke-WPFAction -Action $action
+    if($Global:PoshWPFHashTable.GetControlObject.count -ne 0) {
         if([string]::IsNullOrEmpty($PropertyName)) {
             $Global:PoshWPFHashTable.GetControlObject
         }
         else {
-            $Global:PoshWPFHashTable.GetControlObject."$PropertyName"
+            $Obj = $Global:PoshWPFHashTable.GetControlObject
+            $obj."$PropertyName"
         }
-    }
-    else {
-        Throw 'Control not found!'
+        $Global:PoshWPFHashTable.GetControlObject = $null
     }
 }
 
@@ -223,8 +216,8 @@ Function Set-WPFControl {
     if($ControlName -ne 'Window') { $ControlName = "Window_$ControlName" }
     $Guid = (New-Guid).Guid
     $Global:PoshWPFHashTable[$guid] = $Value
-    $strScriptBlock = "`$PoshWPFHashTable.WindowControls['$($ControlName)'].$($PropertyName) = `$PoshWPFHashTable['$guid'];" + `
-                      "`$null = `$PoshWPFHashTable.Remove('$guid')"
+    $strScriptBlock = "try{`$WindowControls['$($ControlName)'].$($PropertyName) = `$PoshWPFHashTable['$guid'];" + `
+                      "`$null = `$PoshWPFHashTable.Remove('$guid')}catch{}"
     $ScriptBlock = [ScriptBlock]::Create($strScriptBlock)
     Invoke-WPFAction -Action $ScriptBlock
 }
@@ -257,9 +250,24 @@ Function New-WPFEvent {
         [string]$EventName,
         [scriptblock]$Action
     )
+    if($Global:PoshWPFHashTable['EventTimer'] -eq $null) {
+        $Global:PoshWPFHashTable['EventTimer'] = New-Object Timers.Timer
+        $Action = { Get-Event }
+        $Global:PoshWPFHashTable['EventTimer'].Interval = 500
+        $null = Register-ObjectEvent -InputObject $Global:PoshWPFHashTable['EventTimer'] -EventName Elapsed -SourceIdentifier 'Timer' -Action $Action
+        $Global:PoshWPFHashTable['EventTimer'].Start()
+    }
     if($ControlName -ne 'Window') { $ControlName = "Window_$ControlName" }
-    $WinControls = $Global:PoshWPFHashTable.WindowControls
-    $null = Register-ObjectEvent -InputObject $WinControls[$ControlName] -EventName $EventName -Action $Action
+    $GUID = (New-Guid).Guid
+    $strEventAction = "`$Global:WindowControls['$ControlName'].Add_$($EventName)({`$Global:PoshWPFHashTable.Host.Runspace.Events.GenerateEvent('$GUID',`$Global:WindowControls['$ControlName'],`$null,'')})"
+    $EventAction = [scriptblock]::Create($strEventAction)
+    Invoke-WPFAction -Action $EventAction
+    #$Global:PoshWPFHashTable[$Guid] = $EventAction
+    #$strEventScript = "`$null = Register-ObjectEvent -InputObject `$Global:WindowControls['$ControlName'] -EventName '$EventName' -Action `$Global:PoshWPFHashTable['$Guid']`n" + `
+    #                  "`$null = `$PoshWPFHashTable.Remove('$guid')"
+    #$ScriptBlock = [scriptblock]::Create($strEventScript)
+    #Invoke-WPFAction -Action $ScriptBlock
+    $null = Register-EngineEvent -SourceIdentifier $Guid -Action $Action
 }
 
 Function Start-WPFSleep {
