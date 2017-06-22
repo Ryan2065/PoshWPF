@@ -66,7 +66,18 @@ Function Write-WPFError {
 }
 
 Function New-WPFTick {
-    $null = $Global:PoshWPFHashTable.ActionsMutex.WaitOne()
+    if($Global:PoshWPFHashTable.Action) {
+        $Action = $Global:PoshWPFHashTable.Action
+        try{
+            Invoke-Command -ScriptBlock $Action
+            $Global:PoshWPFHashTable.Action = $null
+        }
+        catch {
+            $Global:PoshWPFHashTable['ActionError'] = $_
+            $Global:PoshWPFHashTable.Action = $null
+        }
+    }
+    <#
     $RunActions = $false
     $ActionsToRun = @()
     if($Global:PoshWPFHashTable.Actions.Count -gt 0) {
@@ -83,8 +94,9 @@ Function New-WPFTick {
                 Invoke-Command -ScriptBlock $instance
             }
             catch {
-                Write-WPFError -Exc "$instance `n $_"
+                $Global:PoshWPFHashTable['ActionError'] = $_
             }
         }
     }
+    #>
 }

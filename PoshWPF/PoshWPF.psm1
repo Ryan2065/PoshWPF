@@ -1,5 +1,18 @@
 Add-Type -AssemblyName PresentationFramework,PresentationCore,WindowsBase
 
+Class PoshWPFBinding {
+    hidden [string]$Pointer
+    [object]$Value
+    PoshWPFBinding($Pointer, $Value) {
+        $this.Pointer = $Pointer
+        $this.Value = $Value
+    }
+    UpdateValue($NewValue) {
+        $this.Value = $NewValue
+        $Global:PoshWPFHashTable.Bindings[$this.Pointer][0] = $NewValue
+    }
+}
+
 Function New-WPFWindow {
     <#
         .SYNOPSIS
@@ -26,6 +39,18 @@ Function New-WPFWindow {
     )
     $FormattedXAML = Format-WPFXAML -xaml $xaml
     $Global:PoshWPFHashTable = [HashTable]::Synchronized(@{})
+    $Global:PoshWPFHashTable.ErrorList = New-Object System.Collections.ArrayList
+    $Global:PoshWPFHashTable['ErrorTimer'] = New-Object Timers.Timer
+    $ErrorAction = {
+        If($Global:PoshWPFHashTable.ErrorList.Count -ne 0) {
+            $ErrorObj = $Global:PoshWPFHashTable.ErrorList[0]
+            $Global:PoshWPFHashTable.ErrorList.RemoveAt(0)
+            Write-Host $ErrorObj
+        }
+    }
+    $Global:PoshWPFHashTable['ErrorTimer'].Interval = 500
+    $null = Register-ObjectEvent -InputObject $Global:PoshWPFHashTable['ErrorTimer'] -EventName Elapsed -SourceIdentifier 'Timer' -Action $ErrorAction
+    $Global:PoshWPFHashTable['ErrorTimer'].Start()
     $Global:PoshWPFHashTable.Host = $Host
     $Global:PoshWPFHashTable.xaml = $FormattedXAML
     $Global:PoshWPFHashTable.Actions = New-Object System.Collections.ArrayList
@@ -128,8 +153,15 @@ Function Invoke-WPFAction {
     param(
         [ScriptBlock]$Action
     )
-    
-    $Global:PoshWPFHashTable.Window.Dispatcher.Invoke([action]$Action)
+    $Global:PoshWPFHashTable.Action = $Action
+    while($Global:PoshWPFHashTable.Action -ne $null) {
+        Start-Sleep -Milliseconds 10
+    }
+    if($Global:PoshWPFHashTable['ActionError']) {
+        $ErrorObj = $Global:PoshWPFHashTable['ActionError']
+        $Global:PoshWPFHashTable['ActionError'] = $null
+        throw $ErrorObj
+    }
 }
 
 Function Get-WPFControl {
@@ -166,7 +198,6 @@ Function Get-WPFControl {
         `$Control = `$Global:WindowControls['$ControlName']
         `$Global:PoshWPFHashTable.GetControlObject = @{}
         `$ControlNames = (`$Control | Get-Member -MemberType Property).Name
-        `$ControlNames > c:\users\u586200\desktop\test.txt
         foreach(`$Name in `$ControlNames) {
             `$Global:PoshWPFHashTable.GetControlObject[`$Name] = `$Control."`$Name"
         }
@@ -216,8 +247,8 @@ Function Set-WPFControl {
     if($ControlName -ne 'Window') { $ControlName = "Window_$ControlName" }
     $Guid = (New-Guid).Guid
     $Global:PoshWPFHashTable[$guid] = $Value
-    $strScriptBlock = "try{`$WindowControls['$($ControlName)'].$($PropertyName) = `$PoshWPFHashTable['$guid'];" + `
-                      "`$null = `$PoshWPFHashTable.Remove('$guid')}catch{}"
+    $strScriptBlock = "`$WindowControls['$($ControlName)'].$($PropertyName) = `$PoshWPFHashTable['$guid'];" + `
+                      "`$null = `$PoshWPFHashTable.Remove('$guid')"
     $ScriptBlock = [ScriptBlock]::Create($strScriptBlock)
     Invoke-WPFAction -Action $ScriptBlock
 }
@@ -250,13 +281,13 @@ Function New-WPFEvent {
         [string]$EventName,
         [scriptblock]$Action
     )
-    if($Global:PoshWPFHashTable['EventTimer'] -eq $null) {
+    <#if($Global:PoshWPFHashTable['EventTimer'] -eq $null) {
         $Global:PoshWPFHashTable['EventTimer'] = New-Object Timers.Timer
         $Action = { Get-Event }
         $Global:PoshWPFHashTable['EventTimer'].Interval = 500
         $null = Register-ObjectEvent -InputObject $Global:PoshWPFHashTable['EventTimer'] -EventName Elapsed -SourceIdentifier 'Timer' -Action $Action
         $Global:PoshWPFHashTable['EventTimer'].Start()
-    }
+    }#>
     if($ControlName -ne 'Window') { $ControlName = "Window_$ControlName" }
     $GUID = (New-Guid).Guid
     $strEventAction = "`$Global:WindowControls['$ControlName'].Add_$($EventName)({`$Global:PoshWPFHashTable.Host.Runspace.Events.GenerateEvent('$GUID',`$Global:WindowControls['$ControlName'],`$null,'')})"
@@ -291,3 +322,28 @@ Function Start-WPFSleep {
     }
 }
 
+Function New-WPFBinding {
+    Param(
+        [string]$ControlName,
+        [object]$PropertyName,
+        [string]$Mode = 'TwoWay'
+    )
+    If($ControlName -ne 'Window') { $ControlName = "Window_$ControlName" }
+    if($null -eq $Global:PoshWPFHashTable['Bindings']) {
+        $Global:PoshWPFHashTable['Bindings'] = @{}
+    }
+    $BindingName = "$($ControlName)_$PropertyName"
+    $Global:PoshWPFHashTable.Bindings[$BindingName] = New-Object System.Collections.ObjectModel.ObservableCollection[Object]
+$strBinding = @"
+    `$ControlType = (`$WindowControls['$ControlName'].GetType()).UnderlyingSystemType
+    `$Binding = New-Object System.Windows.Data.Binding
+    `$Binding.Path = '[0]'
+    `$Binding.Mode = [System.Windows.Data.BindingMode]::$($Mode)
+    `$null = `$Global:PoshWPFHashTable.Bindings['$BindingName'].Add(`$WindowControls['$ControlName'].$PropertyName)
+    `$Binding.Source = `$Global:PoshWPFHashTable.Bindings['$BindingName']
+    `$null = [System.Windows.Data.BindingOperations]::SetBinding(`$WindowControls['$ControlName'],`$ControlType::$($PropertyName)Property,`$Binding)
+"@
+    $BindingAction = [ScriptBlock]::Create($strBinding)
+    Invoke-WPFAction -Action $BindingAction
+    [PoshWPFBinding]::New($BindingName, $Global:PoshWPFHashTable.Bindings[$BindingName][0])
+}
