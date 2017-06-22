@@ -21,9 +21,11 @@ Function Show-WPFWindow {
     try {
         Add-Type -AssemblyName PresentationFramework,PresentationCore,WindowsBase
         $Window = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader $xaml))
-        $Global:PoshWPFHashTable.WindowControls['Window'] = $Window
-        $xaml.SelectNodes("//*[@Name]") | Foreach-Object { 
-            $Global:PoshWPFHashTable.WindowControls["Window_$($_.Name)"] = $Window.FindName($_.Name)
+        $Global:WindowControls = @{}
+        $Global:WindowControls['Window'] = $Window
+        $Global:PoshWPFHashTable.Window = $Window
+        $xaml.SelectNodes("//*[@Name]") | Foreach-Object {
+            $Global:WindowControls["Window_$($_.Name)"] = $Window.FindName($_.Name)
         }
         $Timer = New-Object System.Windows.Threading.DispatcherTimer
         $Timer.Interval = [timespan]"0:0:0.50"
@@ -57,31 +59,31 @@ Function Write-WPFError {
         .Author: Ryan Ephgrave
     #>
     Param($Exc)
-    if($PoshWPFHashTable.ErrorList -eq $null) {
-        $PoshWPFHashTable.ErrorList = New-Object System.Collections.ArrayList
+    if($Global:PoshWPFHashTable.ErrorList -eq $null) {
+        $Global:PoshWPFHashTable.ErrorList = New-Object System.Collections.ArrayList
     }
-    $null = $PoshWPFHashTable.ErrorList.Add($Exc)
+    $null = $Global:PoshWPFHashTable.ErrorList.Add($Exc)
 }
 
 Function New-WPFTick {
-    $null = $PoshWPFHashTable.ActionsMutex.WaitOne()
+    $null = $Global:PoshWPFHashTable.ActionsMutex.WaitOne()
     $RunActions = $false
     $ActionsToRun = @()
-    if($PoshWPFHashTable.Actions.Count -gt 0) {
+    if($Global:PoshWPFHashTable.Actions.Count -gt 0) {
         $RunActions = $true
-        foreach($action in $PoshWPFHashTable.Actions) {
+        foreach($action in $Global:PoshWPFHashTable.Actions) {
             $ActionsToRun += @($action)
         }
-        $null = $PoshWPFHashTable.Actions.Clear()
+        $null = $Global:PoshWPFHashTable.Actions.Clear()
     }
-    $null = $PoshWPFHashTable.ActionsMutex.ReleaseMutex()
+    $null = $Global:PoshWPFHashTable.ActionsMutex.ReleaseMutex()
     if($RunActions) {
         foreach($instance in $ActionsToRun) {
             try {
                 Invoke-Command -ScriptBlock $instance
             }
             catch {
-                Write-WPFError -Exc $_
+                Write-WPFError -Exc "$instance `n $_"
             }
         }
     }
